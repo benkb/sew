@@ -1,23 +1,24 @@
-% sew - a literate programming tool
-
-This is tool in the tradition of Norman Ramsey `noweb` tool and also features
-the `tangle` and `weave` command to compose source code and literate text.
-
-## Development
-
-sh ./bootstrap-boot.sh sew.md bootstrap.sh
-
-
-sh ./build/bootstrap.sh sew.md sew.pl
 
 
 
 
-## sew.pl { #sew tangle=.pl }
 
-### Head and Global Definitions
 
-```perl
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #!/usr/bin/env perl
 use strict;
 use warnings;
@@ -33,11 +34,11 @@ our $USAGE = '<cmd> <sourcefile> [tag] ...';
 #     weave:  get text
 #
 
-```
 
-### Some Helper Functions
 
-```perl
+
+
+
 
 sub error_non_ws{
    my ($ln, $lni, $errmsg) = @_;
@@ -62,11 +63,11 @@ sub build_filename{
       die "Err: file key is missing"
    }
 }
-```
 
-### cmd_tangle
 
-```perl
+
+
+
 sub cmd_tangle {
    my ($doc,$tag) = @_;
 
@@ -74,11 +75,11 @@ sub cmd_tangle {
 
    my $tangle_header_line = sub{
       my ($header_attrib) = @_;
-```
 
-#### Check for endtangle
 
-```perl
+
+
+
 
       if($header_attrib->{endtangle}){
          die "Err: There is no filename" unless ($filename);
@@ -158,11 +159,11 @@ sub cmd_tangle {
    }
 
 }
-```
 
-### cmd_weave
 
-```perl
+
+
+
 sub cmd_weave {
    my ($doc,$tag) = @_;
 
@@ -254,11 +255,11 @@ our %dispatcher = (
    weave => \&cmd_weave,
    tangle => \&cmd_tangle,
 );
-```
 
-### main
 
-```perl
+
+
+
 
 sub main {
    my ($cmdinput, $sourcefile, $taginput) = @_;
@@ -270,11 +271,11 @@ sub main {
    my $searchtag = ($taginput =~ /^\#([a-zA-Z0-9]+)/) ? $1 : undef;
    die "Err: tag input is invalid. '#tag' with a leading hash and an alphanumeric value" unless $searchtag;
 
-```
 
-#### call parser 
 
-```perl
+
+
+
 
    my ($listing) = parse($sourcefile);
 
@@ -287,20 +288,20 @@ sub main {
    $cmd->($document, $taginput);
 }
 
-```
 
-### Parser
 
-```perl
+
+
+
 
 sub parse{
    my ($sourcefile) = @_;
 
-```
 
-#### regular expressions
 
-```perl
+
+
+
 
    my $rxs_fence = '^\`\`\`';
    my $rxs_crown_capt = '\s*\{\s*([^\}]*)\s*\}\s*$';
@@ -395,10 +396,10 @@ sub parse{
    my @code_buffer;
    my ($infence, $fence_crw, @doc)  ;
 
-```
-#### foreach loop
 
-```perl
+
+
+
    foreach my $ln (<$fh>){
       chomp $ln;
       my $crw_line;
@@ -409,7 +410,7 @@ sub parse{
                undef @code_buffer;
                $infence = undef;
             }else{
-               die "Err: invalid end fence on line '$lni'"
+               die "Err: invalid end fence"
             }
          }else{
             push @code_buffer, $ln;
@@ -439,11 +440,11 @@ sub parse{
       }
       $lni++;
    }
-```
 
-#### Clean up
 
-```perl
+
+
+
 
    if($last_tag){
       if(@buffer){
@@ -460,176 +461,6 @@ sub parse{
 
 
 main @ARGV;
-
-```
-
-## bootstrap.sh { #bootstrap tangle=.sh }
-
-
-```bash
-#!/bin/sh
-
-set -u
-
-USAGE='<source-file> <target-file>'
-
-source_file="${1:-}"
-target_file="${2:-}"
-
-
-script_name='sew'
-script_ext='.pl'
-
-mkdir -p build
-
-script_build="build/${script_name}${script_ext}"
-script_boot="${script_name}-boot${script_ext}"
-
-die() { echo "$@" >&2; exit 1; }
-
-[ -n "$source_file" ] || die "usage: $USAGE" 
-[ -n "$target_file" ] || die "usage: $USAGE" 
-
-[ -n "$source_file" ] || die "Err: no source file found" 
-
-
-if [ -f "$target_file" ] ; then
-   target_archive="${target_file}.bak"
-   if [ -f "$target_archive" ]; then
-      die "Err: cannot remove '$target_file', there is already an archive file under '$target_archive'"
-   else
-      echo "Archive from '$target_file' '$target_archive'"
-      mv "$target_file" "$target_archive"
-   fi
-fi
-
-
-```
-
-### The generator
-
-```bash
-
-generate_build_target(){
-   local script="${1:-}"
-   local name="${2:-}"
-   local ext="${3:-}"
-
-   [ -n "$script" ] || die "Err: got no script"
-   [ -n "$name" ] || die "Err: got no name"
-   [ -n "$ext" ] || die "Err: got no ext"
-
-   [ -f "$script" ] || die "Err: script '$script' not exists"
-
-   local target="${name}${ext}"
-   local build_target="build/${target}"
-
-
-   stamp="$(date +'%s')"
-   [ -n "$stamp" ] || die "Err: could not set stamp"
-   build_target_v="build/${name}_${stamp}$ext"
-
-   if [ -f "$build_target_v" ]; then
-      sleep 1
-      stamp="$(date +'%s')"
-      [ -n "$stamp" ] || die "Err: could not set stamp"
-      build_target_v="build/${name}_${stamp}${ext}"
-      [ -f "$build_target_v" ] && die "Err: there is still already a target file '$build_target_v'"
-   fi
-
-   local tag="#$name"
-
-```
-
-#### Perl calls the script
-
-```bash
-
-   echo perl "${script}" tangle "$source_file" "$tag" 
-   perl "${script}" tangle "$source_file" "$tag" || die "Err: could not generate '$target'"
-
-   if [ -f "$target" ]; then
-      cp "$target" "$build_target_v"
-      cp "$target" "$build_target"
-      rm -f "$target"
-      echo "'$target' generated into  '$build_target' and '$build_target_v'"
-   else
-      die "Err: could not generate '$target'"
-   fi
-}
-
-```
-
-### The main part
-
-```bash
-[ -f "$script_build" ] || {
-   [ -f "$script_boot" ] || die "Err: there is no boot script in '$script_boot'"
-   generate_build_target "$script_boot" "$script_name" "$script_ext"
-   [ -f "$script_build" ] || die "Err: build script would not be generated in '$script_build'"
-}
-
-target_name=
-target_ext=
-case "$target_file" in
-   */*) die "Err: target file only in the basename form without folder";;
-   *.*)
-      target_name="${target_file%.*}"
-      target_ext=".${target_file##*.}"
-      ;;
-   *) 
-      target_name="${target_file}"
-      target_ext=''
-      ;;
-esac
-
-
-
-generate_build_target "${script_build}" "$target_name" "$target_ext"
-
-```
-
-
-## roundtrip.sh { #roundtrip tangle=.sh }
-
-```bash
-tempfile="$(mktemp)"
-
-sh ./build/bootstrap.sh sew.md sew.pl > $tempfile 2>&1
-
-if [ $? -eq 0 ] ; then
-    perl ./build/sew.pl $@
-else
-    cat "$tempfile"
-    echo fail
-    exit 1
-fi
-```
-
-## basetest.md { #basetest weave=.md }
-
-### Lorem Ipsum
-
-is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.
-
-## It has survived { #loremtest tangle=.pl }
-
-not only five centuries
-
-
-```perl
-my $perl = "is shiny";
-```
-
-but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of
-
-## Letraset sheets containing Lorem Ipsum passages
-
-and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
-
-
-
-
 
 
 

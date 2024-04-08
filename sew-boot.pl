@@ -403,7 +403,7 @@ sub parse{
                undef @code_buffer;
                $infence = undef;
             }else{
-               die "Err: invalid end fence"
+               die "Err: invalid end fence on line '$lni'"
             }
          }else{
             push @code_buffer, $ln;
