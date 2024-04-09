@@ -1,3 +1,5 @@
 build
-roundtrip.sh
+devrun.sh
 *.swp
+*.bak
+baseline.md*

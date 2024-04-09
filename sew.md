@@ -12,7 +12,6 @@ sh ./build/bootstrap.sh sew.md sew.pl
 
 
 
-
 ## sew.pl { #sew tangle=.pl }
 
 ### Head and Global Definitions
@@ -25,7 +24,7 @@ use Data::Dumper 'Dumper';
 
 #test
 
-our $USAGE = '<cmd> <sourcefile> [tag] ...';
+our $USAGE = '<sourcefile> <cmd> [tag] ...';
 
 # sew - a literate programming tool
 #  Commands:
@@ -166,6 +165,8 @@ sub cmd_tangle {
 sub cmd_weave {
    my ($doc,$tag) = @_;
 
+   #di xxx => Dumper $tag;
+
    my (@buffer, $filename, $docstart);
 
    my $weave_header_line = sub{
@@ -261,13 +262,13 @@ our %dispatcher = (
 ```perl
 
 sub main {
-   my ($cmdinput, $sourcefile, $taginput) = @_;
+   my ($sourcefile, $cmdinput,  $taginput) = @_;
    die "usage: $USAGE" unless ($cmdinput && $sourcefile && $taginput);
 
    my $cmd = $dispatcher{$cmdinput};
    die "Err: could not find cmd for '$cmdinput'" unless ($cmd);
 
-   my $searchtag = ($taginput =~ /^\#([a-zA-Z0-9]+)/) ? $1 : undef;
+   my $searchtag = ($taginput =~ /^\#([a-zA-Z0-9\-]+)/) ? $1 : undef;
    die "Err: tag input is invalid. '#tag' with a leading hash and an alphanumeric value" unless $searchtag;
 
 ```
@@ -275,47 +276,39 @@ sub main {
 #### call parser 
 
 ```perl
-
    my ($listing) = parse($sourcefile);
-
 
    my ($document) = (exists $listing->{$searchtag})
       ? $listing->{$searchtag}
-      : die "Err: could not find taginput in '$searchtag'";
+      : die "Err: could not find searchtag in '$searchtag'";
 
-
-   $cmd->($document, $taginput);
+   $cmd->($document, $searchtag);
 }
 
 ```
 
-### Parser
+### Parser and regular expressions
 
 ```perl
 
 sub parse{
    my ($sourcefile) = @_;
 
-```
-
-#### regular expressions
-
-```perl
-
    my $rxs_fence = '^\`\`\`';
-   my $rxs_crown_capt = '\s*\{\s*([^\}]*)\s*\}\s*$';
-   my $rxs_alphanum_capt = '\s*([a-zA-Z0-9]*)\s*';
+   my $rxs_attrib_capt = '\s*\{\s*([^\}]*)\s*\}\s*$';
+   my $rxs_alphanum_capt = '\s*([a-zA-Z0-9\-]*)\s*';
    my $rxs_fname_capt = '\s*([a-zA-Z0-9\.\-\_]*)\s*';
 
    my $rx_fence_probe = qr|^\s*\`\`|;
    my $rx_fence_fault = qr|^\s+\`\`|;
-   my $rx_fence_lang_attrib_capt = qr|${rxs_fence}${rxs_alphanum_capt}${rxs_crown_capt}|;
+   my $rx_fence_lang_attrib_capt =
+   qr|${rxs_fence}${rxs_alphanum_capt}${rxs_attrib_capt}|;
    my $rx_fence_lang_capt = qr|${rxs_fence}${rxs_alphanum_capt}$|;
    my $rx_fence_end = qr|${rxs_fence}\s*$|;
 
    my $rx_header_probe = qr|^\s*\#.*\{|;
    my $rx_header_fault = qr|^\s+\#.*\{|;
-   my $rx_header_crown_capt = qr|^(#+\s*[^\{]+)$rxs_crown_capt|;
+   my $rx_header_attrib_capt = qr|^(#+\s*[^\{]+)$rxs_attrib_capt|;
    my $rx_maintitle_capt = qr|^(\%\s+.*)\s*$|;
 
    my $rx_tag_capt = qr|^#$rxs_alphanum_capt$|;
@@ -333,7 +326,7 @@ sub parse{
    my $last_tag ;
    my $last_crown ;
 
-   my $handle_crown = sub {
+   my $handle_attribute = sub {
       my ( $marker, $crw_str, $str) = @_;
 
       my %crw  = ( lni => $lni, marker => $marker  ); 
@@ -418,7 +411,7 @@ sub parse{
          if($ln =~ /$rx_fence_probe/){
             if($ln =~ /$rx_fence_lang_attrib_capt/){
                die "Err: language is missing" unless($1);
-               @code_buffer = (crownblock => $handle_crown->(fence => $2, $1));
+               @code_buffer = (crownblock => $handle_attribute->(fence => $2, $1));
                $infence = 1;
             }elsif($ln =~ /$rx_fence_lang_capt/){
                $check_lang->($1);
@@ -428,8 +421,8 @@ sub parse{
                error_non_ws($ln, $lni, "Err: fence has the wrong form on line '$lni': $ln");
             }
          }elsif($ln =~ /$rx_header_probe/){
-            if($ln =~ /$rx_header_crown_capt/){
-               push @buffer, $handle_crown->(header => $2, $1);
+            if($ln =~ /$rx_header_attrib_capt/){
+               push @buffer, $handle_attribute->(header => $2, $1);
             }else{
                error_non_ws($ln, $lni, "Err: head is invalid in ($lni): " . $ln);
             }
@@ -463,6 +456,31 @@ main @ARGV;
 
 ```
 
+## sew-test.sh { #sew-test tangle=.sh }
+
+```bash
+
+perl sew.pl sew.md weave '#baseline' || {
+    echo "Err: sew.pl failed" 1>&2
+    exit 1
+}
+
+diff baseline.md.md baseline.weave || { 
+    echo "Err: baseline test failed" 1>&2
+    exit 1
+    }
+
+```
+
+## bootstrap-test.sh { #bootstrap-test tangle=.sh }
+
+```bash
+sh ./bootstrap.sh sew.md sew.pl || {
+    echo "Err: bootstrap.sh failed" 1>&2
+    exit 1
+}
+```
+
 ## bootstrap.sh { #bootstrap tangle=.sh }
 
 
@@ -476,14 +494,16 @@ USAGE='<source-file> <target-file>'
 source_file="${1:-}"
 target_file="${2:-}"
 
+compiler='sew.pl'
 
-script_name='sew'
-script_ext='.pl'
+compiler_name="${compiler%.*}"
+compiler_ext="${compiler##*.}"
+compiler_source="${compiler_name}.md"
 
 mkdir -p build
 
-script_build="build/${script_name}${script_ext}"
-script_boot="${script_name}-boot${script_ext}"
+compiler_built="build/${compiler}"
+compiler_boot="${compiler_name}-boot.${compiler_ext}"
 
 die() { echo "$@" >&2; exit 1; }
 
@@ -505,57 +525,85 @@ fi
 
 
 ```
+### move to build
+
+Check if a given compiler run the testst successfully
+If yes, move to build folder:
+- top:          ./build/compiler.pl
+- versioned:    ./build/compiler_nnnnnnn.pl
+
+```bash
+
+baseline_test(){
+    local compiler="${1:-}"
+    [ -n "$compiler" ] || die "Err: no compiler"
+
+   rm -f baseline.md.md
+   perl "${compiler}" "$compiler_source" weave "#baseline" || die "Err: could not generate 'baseline.md'"
+   [ -f 'baseline.md.md' ] || die "Err: could not extract the baseline test"
+
+    # delete leading empty lines
+    perl -i -ne 'BEGIN{ $p; } $p = 1 unless /^\s*$/; print "$_" if $p;' baseline.md.md
+
+    diff baseline.md.md baseline.weave || die "Err: baseline not matching with .weave"
+}
+
+move_into_build(){
+    local artefact="${1:-}"
+
+   [ -n "$artefact" ] || die "Err: got no artefact"
+
+   [ -f "$artefact" ] || die "Err: invalid artefact '$artefact'"
+
+
+    local name="${artefact%.*}"
+    local ext="${artefact##*.}"
+
+   local build_artefact="build/${artefact}"
+   local stamp="$(date +'%s')"
+   [ -n "$stamp" ] || die "Err: could not set stamp"
+   local build_artefact_v="build/${name}_${stamp}.${ext}"
+
+   if [ -f "$build_artefact_v" ]; then
+      sleep 1
+      local stamp2="$(date +'%s')"
+      [ -n "$stamp2" ] || die "Err: could not set stamp"
+      build_artefact_v="build/${name}_${stamp2}.${ext}"
+      [ -f "$build_artefact_v" ] && die "Err: there is still already a artefact file '$build_artefact_v'"
+   fi
+   
+    cp "$artefact" "$build_artefact_v"
+    cp "$artefact" "$build_artefact"
+    rm -f "$artefact"
+    echo "'$artefact' moved into  '$build_artefact' and '$build_artefact_v'"
+
+}
+```
 
 ### The generator
 
 ```bash
-
 generate_build_target(){
-   local script="${1:-}"
-   local name="${2:-}"
-   local ext="${3:-}"
+   local compiler="${1:-}"
+   local target="${2:-}"
 
-   [ -n "$script" ] || die "Err: got no script"
-   [ -n "$name" ] || die "Err: got no name"
-   [ -n "$ext" ] || die "Err: got no ext"
+   [ -n "$compiler" ] || die "Err: got no compiler"
+   [ -n "$target" ] || die "Err: got no target"
 
-   [ -f "$script" ] || die "Err: script '$script' not exists"
+   [ -f "$compiler" ] || die "Err: compiler '$compiler' not exists"
 
-   local target="${name}${ext}"
    local build_target="build/${target}"
 
-
-   stamp="$(date +'%s')"
-   [ -n "$stamp" ] || die "Err: could not set stamp"
-   build_target_v="build/${name}_${stamp}$ext"
-
-   if [ -f "$build_target_v" ]; then
-      sleep 1
-      stamp="$(date +'%s')"
-      [ -n "$stamp" ] || die "Err: could not set stamp"
-      build_target_v="build/${name}_${stamp}${ext}"
-      [ -f "$build_target_v" ] && die "Err: there is still already a target file '$build_target_v'"
-   fi
-
+    local name="${target%.*}"
    local tag="#$name"
 
-```
+    #### Perl calls the compiler
 
-#### Perl calls the script
+   echo perl "${compiler}" tangle "$source_file" "$tag" 
+   perl "${compiler}" "$source_file" tangle "$tag" || die "Err: could not generate '$target'"
 
-```bash
-
-   echo perl "${script}" tangle "$source_file" "$tag" 
-   perl "${script}" tangle "$source_file" "$tag" || die "Err: could not generate '$target'"
-
-   if [ -f "$target" ]; then
-      cp "$target" "$build_target_v"
-      cp "$target" "$build_target"
-      rm -f "$target"
-      echo "'$target' generated into  '$build_target' and '$build_target_v'"
-   else
-      die "Err: could not generate '$target'"
-   fi
+   [ $? -eq 0 ] || die "Err: something wrong with the compiler"
+   [ -f "$target" ] || die "Err: could not generate '$target'"
 }
 
 ```
@@ -563,50 +611,93 @@ generate_build_target(){
 ### The main part
 
 ```bash
-[ -f "$script_build" ] || {
-   [ -f "$script_boot" ] || die "Err: there is no boot script in '$script_boot'"
-   generate_build_target "$script_boot" "$script_name" "$script_ext"
-   [ -f "$script_build" ] || die "Err: build script would not be generated in '$script_build'"
-}
 
-target_name=
-target_ext=
+if [ ! -f "$compiler_built" ]; then 
+    [ -f "$compiler_boot" ] || die "Err: there is no boot script in '$compiler_boot'"
+    generate_build_target "$compiler_boot" "$compiler"
+    [ -f "$compiler" ] || die "Err: compiler could not  generated in '$compiler'"
+
+    #baseline_test "$compiler"
+    if [ -f "${compiler_name}-test.sh" ] ; then
+        sh ./${compiler_name}-test.sh || {
+            rm -f "$compiler"
+            die "Test failed exit"
+        }
+    else 
+        die "Err: could not run test"
+    fi
+
+    echo "Ok: baseline test successfull, lets move into build"
+    move_into_build "$compiler"
+
+    [ -f "$compiler_built" ] || die "Err: compiler still not in build ('$compiler_built')"
+fi
+
+
 case "$target_file" in
    */*) die "Err: target file only in the basename form without folder";;
-   *.*)
-      target_name="${target_file%.*}"
-      target_ext=".${target_file##*.}"
-      ;;
-   *) 
-      target_name="${target_file}"
-      target_ext=''
-      ;;
+   *) : ;;
 esac
 
+echo generate_build_target "${compiler_built}" "$target_file"
+generate_build_target "${compiler_built}" "$target_file"
+
+target_name="${target_file%.*}"
 
 
-generate_build_target "${script_build}" "$target_name" "$target_ext"
+if [ -f "${target_name}-test.sh" ] ; then
+    sh ./${target_name}-test.sh || {
+        rm -f "$target_file"
+        die "Err: test failed, die"
+    }
+else 
+    rm -f "$target_file"
+    die "Err: could not run test, could not fine '${target_name}-test.sh'"
+fi
+
+echo "Ok: baseline test successfull, lets move into build"
+move_into_build "$target_file"
 
 ```
 
 
-## roundtrip.sh { #roundtrip tangle=.sh }
+## devrun.sh { #devrun tangle=.sh }
 
 ```bash
+
+USAGE='<cmd> <inpt> <tag>'
+
+input="${1:-}"
+cmd="${2:-}"
+tag="${3:-}"
+
 tempfile="$(mktemp)"
 
-sh ./build/bootstrap.sh sew.md sew.pl > $tempfile 2>&1
+die() { echo "$@" 1>&2 ; exit 1 ; }
+
+[ -n "$cmd" ] || die "usage: $USAGE"
+[ -n "$input" ] || die "usage: $USAGE"
+[ -n "$tag" ] || die "usage: $USAGE"
+
+bootstrap_script='./build/bootstrap.sh'
+
+[ -f "$bootstrap_script" ] || die "Err: no bootstrap script under '$bootstrap_script'"
+sh "$bootstrap_script" sew.md sew.pl > $tempfile 2>&1
 
 if [ $? -eq 0 ] ; then
-    perl ./build/sew.pl $@
+    perl ./build/sew.pl "$input" "$cmd" "$tag" 
 else
     cat "$tempfile"
-    echo fail
-    exit 1
+    die fail
 fi
 ```
 
-## basetest.md { #basetest weave=.md }
+## Fuck { #fuck weave=.md }
+
+fuck 
+vvv fuckk
+
+## baseline.md { #baseline weave=.md }
 
 ### Lorem Ipsum
 
@@ -626,10 +717,5 @@ but also the leap into electronic typesetting, remaining essentially unchanged. 
 ## Letraset sheets containing Lorem Ipsum passages
 
 and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
-
-
-
-
-
 
 

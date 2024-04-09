@@ -17,7 +17,6 @@
 
 
 
-
 #!/usr/bin/env perl
 use strict;
 use warnings;
@@ -25,7 +24,7 @@ use Data::Dumper 'Dumper';
 
 #test
 
-our $USAGE = '<cmd> <sourcefile> [tag] ...';
+our $USAGE = '<sourcefile> <cmd> [tag] ...';
 
 # sew - a literate programming tool
 #  Commands:
@@ -51,6 +50,7 @@ sub error_non_ws{
 
 
 sub build_filename{
+
    my ($header_attrib, $ext) = @_;
 
    if($header_attrib->{file}){
@@ -165,6 +165,8 @@ sub cmd_tangle {
 sub cmd_weave {
    my ($doc,$tag) = @_;
 
+   #di xxx => Dumper $tag;
+
    my (@buffer, $filename, $docstart);
 
    my $weave_header_line = sub{
@@ -260,15 +262,14 @@ our %dispatcher = (
 
 
 sub main {
-   my ($cmdinput, $sourcefile, $taginput) = @_;
+   my ($sourcefile, $cmdinput,  $taginput) = @_;
    die "usage: $USAGE" unless ($cmdinput && $sourcefile && $taginput);
 
    my $cmd = $dispatcher{$cmdinput};
    die "Err: could not find cmd for '$cmdinput'" unless ($cmd);
 
-   my $searchtag = ($taginput =~ /^\#([a-zA-Z0-9]+)/) ? $1 : undef;
+   my $searchtag = ($taginput =~ /^\#([a-zA-Z0-9\-]+)/) ? $1 : undef;
    die "Err: tag input is invalid. '#tag' with a leading hash and an alphanumeric value" unless $searchtag;
-
 
 
 
@@ -277,13 +278,11 @@ sub main {
 
    my ($listing) = parse($sourcefile);
 
-
    my ($document) = (exists $listing->{$searchtag})
       ? $listing->{$searchtag}
-      : die "Err: could not find taginput in '$searchtag'";
+      : die "Err: could not find searchtag in '$searchtag'";
 
-
-   $cmd->($document, $taginput);
+   $cmd->($document, $searchtag);
 }
 
 
@@ -295,26 +294,21 @@ sub main {
 sub parse{
    my ($sourcefile) = @_;
 
-
-
-
-
-
-
    my $rxs_fence = '^\`\`\`';
-   my $rxs_crown_capt = '\s*\{\s*([^\}]*)\s*\}\s*$';
-   my $rxs_alphanum_capt = '\s*([a-zA-Z0-9]*)\s*';
+   my $rxs_attrib_capt = '\s*\{\s*([^\}]*)\s*\}\s*$';
+   my $rxs_alphanum_capt = '\s*([a-zA-Z0-9\-]*)\s*';
    my $rxs_fname_capt = '\s*([a-zA-Z0-9\.\-\_]*)\s*';
 
    my $rx_fence_probe = qr|^\s*\`\`|;
    my $rx_fence_fault = qr|^\s+\`\`|;
-   my $rx_fence_lang_crown_capt = qr|${rxs_fence}${rxs_alphanum_capt}${rxs_crown_capt}|;
+   my $rx_fence_lang_attrib_capt =
+   qr|${rxs_fence}${rxs_alphanum_capt}${rxs_attrib_capt}|;
    my $rx_fence_lang_capt = qr|${rxs_fence}${rxs_alphanum_capt}$|;
    my $rx_fence_end = qr|${rxs_fence}\s*$|;
 
    my $rx_header_probe = qr|^\s*\#.*\{|;
    my $rx_header_fault = qr|^\s+\#.*\{|;
-   my $rx_header_crown_capt = qr|^(#+\s*[^\{]+)$rxs_crown_capt|;
+   my $rx_header_attrib_capt = qr|^(#+\s*[^\{]+)$rxs_attrib_capt|;
    my $rx_maintitle_capt = qr|^(\%\s+.*)\s*$|;
 
    my $rx_tag_capt = qr|^#$rxs_alphanum_capt$|;
@@ -332,7 +326,7 @@ sub parse{
    my $last_tag ;
    my $last_crown ;
 
-   my $handle_crown = sub {
+   my $handle_attribute = sub {
       my ( $marker, $crw_str, $str) = @_;
 
       my %crw  = ( lni => $lni, marker => $marker  ); 
@@ -393,6 +387,11 @@ sub parse{
    push @buffer, { lni => 0, title => $maintitle, weave => '.md', file=> $last_tag . '.md' } ;
    my @code_buffer;
    my ($infence, $fence_crw, @doc)  ;
+
+
+
+
+
    foreach my $ln (<$fh>){
       chomp $ln;
       my $crw_line;
@@ -410,9 +409,9 @@ sub parse{
          }
       }else{
          if($ln =~ /$rx_fence_probe/){
-            if($ln =~ /$rx_fence_lang_crown_capt/){
+            if($ln =~ /$rx_fence_lang_attrib_capt/){
                die "Err: language is missing" unless($1);
-               @code_buffer = (crownblock => $handle_crown->(fence => $2, $1));
+               @code_buffer = (crownblock => $handle_attribute->(fence => $2, $1));
                $infence = 1;
             }elsif($ln =~ /$rx_fence_lang_capt/){
                $check_lang->($1);
@@ -422,8 +421,8 @@ sub parse{
                error_non_ws($ln, $lni, "Err: fence has the wrong form on line '$lni': $ln");
             }
          }elsif($ln =~ /$rx_header_probe/){
-            if($ln =~ /$rx_header_crown_capt/){
-               push @buffer, $handle_crown->(header => $2, $1);
+            if($ln =~ /$rx_header_attrib_capt/){
+               push @buffer, $handle_attribute->(header => $2, $1);
             }else{
                error_non_ws($ln, $lni, "Err: head is invalid in ($lni): " . $ln);
             }
@@ -433,6 +432,12 @@ sub parse{
       }
       $lni++;
    }
+
+
+
+
+
+
    if($last_tag){
       if(@buffer){
          $listing{$last_tag} = [ @buffer ];
